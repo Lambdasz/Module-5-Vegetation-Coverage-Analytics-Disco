@@ -1,8 +1,26 @@
+# Python bytecode & cache
+__pycache__/
 **/__pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Test runs & artifacts (Hasil nguji lokal)
+runs/
+/tmp/
+*.tmp
+
+# IDE & editor Settings
+.vscode/
+.idea/
 *.swp
 *.swo
+
+# Operating system files
 .DS_Store
 Thumbs.db

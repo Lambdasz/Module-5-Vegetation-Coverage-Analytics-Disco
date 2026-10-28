@@ -159,7 +159,7 @@ Module Five analyzes the extent of vegetation cover based on vegetation data det
 - The distribution statistics are used by Module 11 for dashboard charts.
 
 
-#### All things past this point is a placeholder, further update for the readme document will be pushed later
+#### further update for the readme document will be pushed later if needed
 
 
 ## Files

@@ -4,17 +4,32 @@ all the code inside this file are expected to be a pure function code, becuase i
 only take inputs and letting out outputs.....wellll for now it's not a pure function because it still writes to the terminal 
 
 """
+from typing import Final
+
+DEFAULT_THRESHOLD_LOW: Final[float] = 30.0
+DEFAULT_THRESHOLD_MEDIUM: Final[float] = 60.0
+
 
 # classify_coverage experimentation 
 # Coverage Classification: Categorize areas into low, medium, or high vegetation coverage.
-def classify_coverage(coverage_percentage, threshold_dict) : 
+def classify_coverage(coverage_percentage: float, 
+                      low_limit : float = DEFAULT_THRESHOLD_LOW, 
+                      medium_limit : float = DEFAULT_THRESHOLD_MEDIUM) -> str : 
+    if not(0.0 <= coverage_percentage <=100.0) :
+        raise ValueError(
+            f"coverage_percentage harus berada pada rentang 0-100, anda memasukan: {coverage_percentage}"
+        )
     
-    if coverage_percentage <= threshold_dict["low"] :
+    if low_limit > medium_limit :
+        raise ValueError("Batas low tidak boleh lebih tinggi dari medium")
+    
+    elif  coverage_percentage <= low_limit: 
         return "low"
-    elif  coverage_percentage <= threshold_dict["medium_max"]: 
+    elif coverage_percentage <= medium_limit :
         return "medium"
-    else :
+    else : 
         return "high"
+        
 
 
 

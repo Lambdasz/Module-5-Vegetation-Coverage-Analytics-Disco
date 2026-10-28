@@ -3,14 +3,14 @@
   "manifest_version": 1,
 
   "metadata": {
-    "id": "rgb-vegetation-detection",
-    "name": "RGB Vegetation Detection",
+    "id": "vegetation-coverage-analytics",
+    "name": "vegetation Coverage Analytics",
     "version": "1.0.0",
-    "author": "PBL Team 2026",
+    "author": "VCA Team Disco",
     "license": "MIT",
-    "description": "Extracts vegetation masks and calculates coverage using RGB Excess Green (ExG) index.",
+    "description": "Provide analytics for vegetation coverage.",
     "category": "vegetation",
-    "tags": ["rgb", "vegetation", "indices", "exg"],
+    "tags": ["analytics", "vegetation", "plot", "area"],
     "min_core_version": "0.1.0"
   },
 

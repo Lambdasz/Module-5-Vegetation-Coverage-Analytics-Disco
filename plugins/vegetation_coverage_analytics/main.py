@@ -19,8 +19,13 @@ import struct
 import sys
 import time
 import zlib
+from calculate import (
+    DEFAULT_THRESHOLD_LOW,
+    DEFAULT_THRESHOLD_MEDIUM,
+    classify_coverage,
+)
 
-PLUGIN_ID = "rgb-vegetation-detection"
+PLUGIN_ID = "vegetation-coverage-analytics"
 VERSION = "1.0.0"
 VALID_INDEXES = ("ExG", "VARI", "GLI")
 
@@ -37,57 +42,57 @@ def write_json(path: str, data: dict) -> None:
         json.dump(data, f, indent=2)
 
 
-def create_minimal_png(filepath: str, width: int = 128, height: int = 128) -> None:
-    """Write a valid RGBA PNG (green, semi-transparent) using only the stdlib."""
-    pixel = b"\x22\x8b\x22\xc8"
-    raw = b"".join(b"\x00" + pixel * width for _ in range(height))
+# def create_minimal_png(filepath: str, width: int = 128, height: int = 128) -> None:
+#     """Write a valid RGBA PNG (green, semi-transparent) using only the stdlib."""
+#     pixel = b"\x22\x8b\x22\xc8"
+#     raw = b"".join(b"\x00" + pixel * width for _ in range(height))
 
-    def chunk(tag: bytes, data: bytes) -> bytes:
-        return (
-            struct.pack(">I", len(data))
-            + tag
-            + data
-            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
-        )
+#     def chunk(tag: bytes, data: bytes) -> bytes:
+#         return (
+#             struct.pack(">I", len(data))
+#             + tag
+#             + data
+#             + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+#         )
 
-    png = (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
-        + chunk(b"IDAT", zlib.compress(raw))
-        + chunk(b"IEND", b"")
-    )
-    os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-    with open(filepath, "wb") as f:
-        f.write(png)
+#     png = (
+#         b"\x89PNG\r\n\x1a\n"
+#         + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+#         + chunk(b"IDAT", zlib.compress(raw))
+#         + chunk(b"IEND", b"")
+#     )
+#     os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+#     with open(filepath, "wb") as f:
+#         f.write(png)
 
 
-def create_mock_geojson(filepath: str, bbox: list, index_type: str) -> None:
-    """Write a sample GeoJSON boundary artifact."""
-    min_lon, min_lat, max_lon, max_lat = bbox
-    write_json(
-        filepath,
-        {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "Polygon",
-                        "coordinates": [
-                            [
-                                [min_lon, min_lat],
-                                [max_lon, min_lat],
-                                [max_lon, max_lat],
-                                [min_lon, max_lat],
-                                [min_lon, min_lat],
-                            ]
-                        ],
-                    },
-                    "properties": {"class": "vegetation", "index_type": index_type},
-                }
-            ],
-        },
-    )
+# def create_mock_geojson(filepath: str, bbox: list, index_type: str) -> None:
+#     """Write a sample GeoJSON boundary artifact."""
+#     min_lon, min_lat, max_lon, max_lat = bbox
+#     write_json(
+#         filepath,
+#         {
+#             "type": "FeatureCollection",
+#             "features": [
+#                 {
+#                     "type": "Feature",
+#                     "geometry": {
+#                         "type": "Polygon",
+#                         "coordinates": [
+#                             [
+#                                 [min_lon, min_lat],
+#                                 [max_lon, min_lat],
+#                                 [max_lon, max_lat],
+#                                 [min_lon, max_lat],
+#                                 [min_lon, min_lat],
+#                             ]
+#                         ],
+#                     },
+#                     "properties": {"class": "vegetation", "index_type": index_type},
+#                 }
+#             ],
+#         },
+#     )
 
 
 def handle_healthcheck() -> None:
@@ -118,12 +123,12 @@ def resolve_output_dir(payload: dict, output_path: str) -> str:
         return fallback
 
 
-def simulate_detection(threshold: float) -> dict:
-    """Placeholder for the real detection. Returns fixed, plausible metrics."""
-    return {
-        "vegetation_coverage_pct": round(68.4 + (0.35 - threshold) * 10, 2),
-        "total_pixels_analyzed": 12000000,
-    }
+# def simulate_detection(threshold: float) -> dict:
+#     """Placeholder for the real detection. Returns fixed, plausible metrics."""
+#     return {
+#         "vegetation_coverage_pct": round(68.4 + (0.35 - threshold) * 10, 2),
+#         "total_pixels_analyzed": 12000000,
+#     }
 
 
 def failure_result(exec_id: str, started: float, error: str) -> dict:
@@ -138,71 +143,47 @@ def failure_result(exec_id: str, started: float, error: str) -> dict:
 
 
 def run_analysis(input_path: str, output_path: str) -> None:
-    started = time.perf_counter()
-    exec_id = "unknown"
+    # 1. Baca input payload
+    with open(input_path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
 
-    try:
-        if not os.path.exists(input_path):
-            raise FileNotFoundError(f"Input payload file not found: {input_path}")
+    exec_id = payload.get("execution_id", "exec_unknown")
+    params = payload.get("parameters", {})
 
-        with open(input_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+    # 2 Ambil nilai parameter dari payload
+    
+    low_limit = float(params.get("threshold_low", DEFAULT_THRESHOLD_LOW ))
+    medium_limit = float(params.get("threshold_medium", DEFAULT_THRESHOLD_MEDIUM))
+    
 
-        exec_id = payload.get("execution_id", "unknown")
-        params = payload.get("parameters", {})
-        index_type = params.get("index_type", "ExG")
-        threshold = float(params.get("threshold", 0.35))
-        export_mask = bool(params.get("export_mask", True))
+    # 3 Simulasi data dummy persentase area yang ditutupi oleh vegetasi
+    simulated_coverage_pct = 78.0
 
-        if index_type not in VALID_INDEXES:
-            raise ValueError(f"Unsupported index_type: {index_type}")
-        if not 0.0 <= threshold <= 1.0:
-            raise ValueError("threshold must be between 0.0 and 1.0")
+    # 4 manggil pure function dari calculate.py
+    classification_result = classify_coverage(
+        coverage_percentage=simulated_coverage_pct,
+        low_limit=low_limit, 
+        medium_limit=medium_limit
+    )
 
-        emit_progress(exec_id, 10, "loading_image")
-        output_dir = resolve_output_dir(payload, output_path)
-        os.makedirs(output_dir, exist_ok=True)
+    # 5 nyusun hasil sesuai outputs.json & execution_result.schema.json
+    result = {
+        "execution_id": exec_id,
+        "status": "success",
+        "execution_time_ms": 150,
+        "metrics": {
+            "vegetation_coverage_pct": simulated_coverage_pct,
+            "classification": classification_result,
+        },
+        "artifacts": {},
+        "error": None,
+    }
 
-        emit_progress(exec_id, 45, "evaluating_vegetation_index")
-        metrics = simulate_detection(threshold)
+    # 6. Tulis berkas hasil ke disk (Impure I/O)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2)
 
-        emit_progress(exec_id, 90, "saving_mask")
-        bounds = [116.8523, -1.2460, 116.8550, -1.2435]
-        artifacts = {}
-
-        if export_mask:
-            mask_file = os.path.join(output_dir, f"{exec_id}_mask.png")
-            create_minimal_png(mask_file)
-            artifacts["mask_image"] = {
-                "file_path": mask_file,
-                "format": "image/png",
-                "bounds": bounds,
-            }
-
-        geojson_file = os.path.join(output_dir, f"{exec_id}_boundary.geojson")
-        create_mock_geojson(geojson_file, bounds, index_type)
-        artifacts["geojson_boundary"] = {
-            "file_path": geojson_file,
-            "format": "application/geo+json",
-        }
-
-        write_json(
-            output_path,
-            {
-                "execution_id": exec_id,
-                "status": "success",
-                "execution_time_ms": int((time.perf_counter() - started) * 1000),
-                "metrics": metrics,
-                "artifacts": artifacts,
-                "error": None,
-            },
-        )
-        emit_progress(exec_id, 100, "done")
-        sys.exit(0)
-
-    except Exception as exc:  # a failing plugin must never crash unhandled
-        write_json(output_path, failure_result(exec_id, started, str(exc)))
-        sys.exit(1)
+    sys.exit(0)
 
 
 def main() -> None:

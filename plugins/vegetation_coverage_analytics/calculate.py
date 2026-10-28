@@ -18,11 +18,11 @@ def classify_coverage(coverage_percentage, threshold_dict) :
 
 
 
-mock_data = {"low": 20, "medium_max": 50}
-coverage_value = 20.1
+# mock_data = {"low": 20, "medium_max": 50}
+# coverage_value = 20.1
 
-result = classify_coverage(
-    coverage_percentage=coverage_value, 
-    threshold_dict=mock_data, 
-)
-print(result)
+# result = classify_coverage(
+#     coverage_percentage=coverage_value, 
+#     threshold_dict=mock_data, 
+# )
+# print(result)

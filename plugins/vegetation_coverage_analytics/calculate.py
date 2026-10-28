@@ -1,12 +1,146 @@
 """
 calculate.py is a file where calculations inside module 5 are performed.
-All functions in this file are pure functions: they accept inputs and return
-deterministic outputs without causing side effects.
+All functions in this file adhere to Functional Programming principles:
+- Pure Functions: Deterministic output solely based on input arguments without side-effects.
+- Immutability: Inputs are never mutated in-place; new arrays/structures are returned.
+- Separation of Concerns: I/O operations are strictly isolated at the boundary (e.g. load_mask),
+  while data transformations (binarize, calculate, classify) remain purely mathematical.
+- Function Composition: High-level operations are composed from small, focused functions.
 """
 
+import os
 from typing import Any, Dict, Optional, Union
 import numpy as np
+from PIL import Image
 
+
+# ============================================================================
+# 1. PURE TRANSFORMATION FUNCTIONS (No I/O, Deterministic, Immutable)
+# ============================================================================
+
+def parse_image_to_grayscale(img: Image.Image) -> np.ndarray:
+    """
+    Fungsi Murni: Mengonversi objek citra Pillow ke array 2D grayscale (uint8).
+    Mendukung format RGB, RGBA, L (grayscale), dan 1 (1-bit biner).
+
+    Parameters
+    ----------
+    img : PIL.Image.Image
+        Objek citra Pillow.
+
+    Returns
+    -------
+    np.ndarray
+        Array 2D berdimensi (tinggi, lebar) dengan tipe data uint8.
+    """
+    if not isinstance(img, Image.Image):
+        raise TypeError(f"Diharapkan PIL.Image.Image, diterima: {type(img)}")
+
+    # Jika citra memiliki mode selain 'L', konversi secara murni tanpa mutasi citra asal
+    gray_img = img.convert("L") if img.mode != "L" else img
+    return np.array(gray_img, dtype=np.uint8)
+
+
+def binarize_array(
+    arr: np.ndarray,
+    threshold: Optional[int] = None,
+) -> np.ndarray:
+    """
+    Fungsi Murni: Memetakan array 2D menjadi array biner bernilai {0, 1} (uint8).
+    
+    Kaidah fungsional:
+    - Tidak memutasi 'arr' asal.
+    - Adaptif: jika array sudah biner {0, 1}, langsung dinormalisasi.
+    - Jika array berskala 0-255 (standar mask PNG), nilai > threshold diubah menjadi 1.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Array 2D numerik.
+    threshold : int, optional
+        Ambang batas binerisasi. Jika None, sistem otomatis memilih:
+        - threshold = 0 jika nilai maksimum array <= 1 (format 0 dan 1).
+        - threshold = 127 jika nilai maksimum array > 1 (format grayscale 0-255).
+
+    Returns
+    -------
+    np.ndarray
+        Array 2D biner berisikan nilai 0 dan 1 (dtype uint8).
+    """
+    if not isinstance(arr, np.ndarray):
+        arr = np.array(arr)
+
+    if arr.ndim != 2:
+        raise ValueError(f"Array harus 2 dimensi, diterima dimensi: {arr.ndim}")
+
+    if arr.size == 0:
+        return np.zeros((0, 0), dtype=np.uint8)
+
+    # Deteksi threshold otomatis bila tidak diberikan secara eksplisit
+    if threshold is None:
+        th = 0 if int(np.max(arr, initial=0)) <= 1 else 127
+    else:
+        th = threshold
+
+    # Transformasi murni: hasil perbandingan boolean dikonversi ke uint8 (0 atau 1)
+    return (arr > th).astype(np.uint8)
+
+
+# ============================================================================
+# 2. I/O BOUNDARY FUNCTION (Isolasi Efek Samping Berkas)
+# ============================================================================
+
+def load_mask(
+    mask_path: str,
+    threshold: Optional[int] = None,
+) -> np.ndarray:
+    """
+    Membaca berkas citra vegetation mask hasil dari Modul 4, lalu
+    mengonversinya menjadi array 2D biner {0, 1} (uint8) siap proses.
+
+    Pipa komposisi fungsional:
+    `mask_path -> open_image (I/O) -> parse_image_to_grayscale -> binarize_array`
+
+    Parameters
+    ----------
+    mask_path : str
+        Jalur berkas citra mask (format PNG, JPEG, TIFF dari Modul 4).
+    threshold : int, optional
+        Nilai ambang batas binerisasi. Jika None, otomatis menyesuaikan format masker.
+
+    Returns
+    -------
+    np.ndarray
+        Array 2D biner {0, 1} berdimensi (tinggi, lebar) dengan tipe data uint8.
+
+    Raises
+    ------
+    FileNotFoundError
+        Jika berkas mask_path tidak ditemukan pada sistem berkas.
+    ValueError
+        Jika berkas tidak dapat diurai sebagai gambar atau dimensinya tidak valid.
+    """
+    if not isinstance(mask_path, str) or not mask_path.strip():
+        raise ValueError(f"mask_path tidak boleh kosong: {mask_path!r}")
+
+    if not os.path.exists(mask_path):
+        raise FileNotFoundError(f"Berkas vegetation mask tidak ditemukan di: {mask_path}")
+
+    try:
+        with Image.open(mask_path) as raw_img:
+            # Komposisi fungsi: ubah ke grayscale -> binarisasi ke {0, 1}
+            grayscale_arr = parse_image_to_grayscale(raw_img)
+            binary_mask = binarize_array(grayscale_arr, threshold=threshold)
+            return binary_mask
+    except Exception as exc:
+        if isinstance(exc, FileNotFoundError):
+            raise
+        raise ValueError(f"Gagal memproses berkas mask '{mask_path}': {exc}") from exc
+
+
+# ============================================================================
+# 3. PURE ANALYTICAL & CLASSIFICATION FUNCTIONS
+# ============================================================================
 
 def calculate_vegetation_coverage(
     binary_mask: Union[np.ndarray, list],
@@ -50,11 +184,11 @@ def calculate_vegetation_coverage(
             "total_area_sqm": 0.0 if (isinstance(gsd, (int, float)) and gsd > 0) else None,
         }
 
-    # Piksel vegetasi diidentifikasi jika bernilai > 0 (mendukung mask format 0/1 maupun 0/255)
+    # Menghitung piksel vegetasi (> 0 mendukung representasi biner 1 maupun 255)
     vegetation_pixels = int(np.count_nonzero(binary_mask > 0))
     coverage_percentage = round((vegetation_pixels / total_pixels) * 100.0, 4)
 
-    # Mitigasi risiko: jika GSD tersedia dan valid (> 0), hitung luas fisik (m²)
+    # Mitigasi risiko: jika GSD valid (> 0), hitung luas fisik (m²)
     if isinstance(gsd, (int, float)) and gsd > 0:
         pixel_area_sqm = float(gsd) ** 2
         vegetation_area_sqm = round(vegetation_pixels * pixel_area_sqm, 4)
@@ -116,23 +250,14 @@ def classify_coverage(
 
 
 if __name__ == "__main__":
-    # Demo pengujian mandiri
-    print("=== Demo calculate_vegetation_coverage & classify_coverage ===")
+    print("=== Demo Fungsional: load_mask, calculate, classify ===")
 
-    # Buat dummy mask 10x10 dengan 30% vegetasi
+    # Contoh komposisi fungsional langsung dari array
     sample_mask = np.zeros((10, 10), dtype=np.uint8)
-    sample_mask[:3, :] = 1  # 30 piksel vegetasi dari 100 total
+    sample_mask[:4, :] = 1  # 40% vegetasi
 
-    # Kasus 1: GSD tersedia (misal 0.05 meter/pixel = 5 cm/pixel)
-    gsd_val = 0.05
-    cov_result = calculate_vegetation_coverage(sample_mask, gsd=gsd_val)
-    classification = classify_coverage(cov_result["coverage_percentage"])
+    calc = calculate_vegetation_coverage(sample_mask, gsd=0.05)
+    category = classify_coverage(calc["coverage_percentage"])
 
-    print(f"Hasil kalkulasi dengan GSD={gsd_val} m/px:")
-    print(cov_result)
-    print(f"Klasifikasi: {classification}")
-
-    # Kasus 2: GSD tidak tersedia (None fallback)
-    cov_no_gsd = calculate_vegetation_coverage(sample_mask, gsd=None)
-    print("\nHasil kalkulasi tanpa GSD (fallback):")
-    print(cov_no_gsd)
+    print("Hasil Kalkulasi:", calc)
+    print("Kategori Tutupan:", category)
